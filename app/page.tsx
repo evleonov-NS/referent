@@ -1,19 +1,13 @@
+import ReferentForm from "./components/ReferentForm";
+
 export default function Home() {
   return (
-    <main>
-      <h1>Референт</h1>
-      <p>AI-помощник для английских статей</p>
-
-      <textarea
-        placeholder="Вставьте URL статьи или текст..."
-        aria-label="Текст статьи"
-      />
-
-      <div className="actions">
-        <button type="button">О чём статья?</button>
-        <button type="button">Тезисы</button>
-        <button type="button">Подробный перевод</button>
-      </div>
+    <main className="mx-auto max-w-4xl px-6 py-12">
+      <h1 className="mb-2 text-3xl font-bold text-slate-900">Референт</h1>
+      <p className="mb-8 text-slate-600">
+        AI-помощник для анализа иностранных статей и писем
+      </p>
+      <ReferentForm />
     </main>
   );
 }
