@@ -1,14 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ArticleAction = "summary" | "theses" | "translation";
-
-const articleActionLabels: Record<ArticleAction, string> = {
-  summary: "О чем статья?",
-  theses: "Тезисы",
-  translation: "Подробный перевод",
-};
 
 const textareaClass =
   "w-full min-h-30 resize-y rounded-md border border-slate-300 p-3 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
@@ -16,7 +10,7 @@ const textareaClass =
 const columnTextareaClass = `${textareaClass} min-h-50`;
 
 const buttonClass =
-  "rounded-md bg-blue-600 px-5 py-2.5 text-white transition-colors hover:bg-blue-700";
+  "rounded-md bg-blue-600 px-5 py-2.5 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400";
 
 function parseArticleInput(value: string): "url" | "text" | null {
   const trimmed = value.trim();
@@ -36,10 +30,28 @@ function copyableClass(copied: boolean) {
   ].join(" ");
 }
 
+function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error instanceof Event) return "Операция прервана";
+  return "Неизвестная ошибка";
+}
+
+function adjustTextareaHeight(textarea: HTMLTextAreaElement | null) {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 async function copyText(text: string, onCopied: () => void) {
   if (!text.trim()) return;
-  await navigator.clipboard.writeText(text);
-  onCopied();
+
+  try {
+    await navigator.clipboard.writeText(text);
+    onCopied();
+  } catch {
+    // Браузер мог запретить clipboard — не пробрасываем ошибку в React.
+  }
 }
 
 export default function ReferentForm() {
@@ -47,6 +59,8 @@ export default function ReferentForm() {
   const [articleResult, setArticleResult] = useState("");
   const [articleError, setArticleError] = useState("");
   const [articleCopied, setArticleCopied] = useState(false);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const articleResultRef = useRef<HTMLTextAreaElement>(null);
 
   const [letterText, setLetterText] = useState("");
   const [letterTranslation, setLetterTranslation] = useState("");
@@ -62,7 +76,11 @@ export default function ReferentForm() {
     setTimeout(() => setter(false), 1500);
   }
 
-  function handleArticleAction(action: ArticleAction) {
+  useEffect(() => {
+    adjustTextareaHeight(articleResultRef.current);
+  }, [articleResult]);
+
+  async function handleArticleAction(_action: ArticleAction) {
     const inputType = parseArticleInput(articleInput);
     if (!inputType) {
       setArticleError("Вставьте ссылку на статью или текст.");
@@ -71,10 +89,47 @@ export default function ReferentForm() {
 
     setArticleError("");
     setArticleCopied(false);
-    const source = inputType === "url" ? "ссылки" : "текста";
-    setArticleResult(
-      `Результат для режима «${articleActionLabels[action]}» (${source}) появится здесь после подключения AI.`,
-    );
+    setArticleLoading(true);
+    setArticleResult("");
+
+    try {
+      const response = await fetch("/api/parse-article", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          inputType === "url"
+            ? { url: articleInput.trim() }
+            : { text: articleInput.trim() },
+        ),
+      });
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("Сервер вернул некорректный ответ");
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Не удалось обработать статью");
+      }
+
+      setArticleResult(
+        JSON.stringify(
+          {
+            date: data.date ?? "",
+            title: data.title ?? "",
+            content: data.content ?? "",
+          },
+          null,
+          2,
+        ),
+      );
+    } catch (error) {
+      setArticleError(formatError(error));
+    } finally {
+      setArticleLoading(false);
+    }
   }
 
   function handleTranslateLetter() {
@@ -127,25 +182,32 @@ export default function ReferentForm() {
           <button
             type="button"
             className={buttonClass}
-            onClick={() => handleArticleAction("summary")}
+            disabled={articleLoading}
+            onClick={() => void handleArticleAction("summary")}
           >
             О чем статья?
           </button>
           <button
             type="button"
             className={buttonClass}
-            onClick={() => handleArticleAction("theses")}
+            disabled={articleLoading}
+            onClick={() => void handleArticleAction("theses")}
           >
             Тезисы
           </button>
           <button
             type="button"
             className={buttonClass}
-            onClick={() => handleArticleAction("translation")}
+            disabled={articleLoading}
+            onClick={() => void handleArticleAction("translation")}
           >
             Подробный перевод
           </button>
         </div>
+
+        {articleLoading && (
+          <p className="mb-5 text-slate-600">Загрузка и парсинг статьи...</p>
+        )}
 
         {articleError && (
           <p className="mb-5 text-red-700">{articleError}</p>
@@ -165,13 +227,15 @@ export default function ReferentForm() {
             )}
           </label>
           <textarea
+            ref={articleResultRef}
             id="article-result"
             readOnly
-            className={`${textareaClass} min-h-40 ${copyableClass(articleCopied)}`}
-            placeholder="Здесь появится анализ или перевод статьи..."
+            rows={1}
+            className={`${textareaClass} resize-none overflow-hidden ${copyableClass(articleCopied)}`}
+            placeholder="Здесь появится JSON с датой, заголовком и содержимым статьи..."
             value={articleResult}
             onClick={() =>
-              copyText(articleResult, () => flashCopied(setArticleCopied))
+              void copyText(articleResult, () => flashCopied(setArticleCopied))
             }
             title={articleResult ? "Нажмите, чтобы скопировать" : undefined}
           />
@@ -242,7 +306,7 @@ export default function ReferentForm() {
               placeholder="Здесь появится перевод письма..."
               value={letterTranslation}
               onClick={() =>
-                copyText(letterTranslation, () =>
+                void copyText(letterTranslation, () =>
                   flashCopied(setTranslationCopied),
                 )
               }
@@ -279,7 +343,7 @@ export default function ReferentForm() {
               placeholder="Здесь появится ответ на языке оригинала..."
               value={replyOriginal}
               onClick={() =>
-                copyText(replyOriginal, () =>
+                void copyText(replyOriginal, () =>
                   flashCopied(setReplyOriginalCopied),
                 )
               }
@@ -312,7 +376,9 @@ export default function ReferentForm() {
               placeholder="Здесь появится ответ на русском..."
               value={replyRussian}
               onClick={() =>
-                copyText(replyRussian, () => flashCopied(setReplyRussianCopied))
+                void copyText(replyRussian, () =>
+                  flashCopied(setReplyRussianCopied),
+                )
               }
               title={replyRussian ? "Нажмите, чтобы скопировать" : undefined}
             />
