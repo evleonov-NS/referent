@@ -10,8 +10,9 @@ export type ParsedArticle = {
 
 const CONTENT_SELECTORS = [
   "article",
-  "main",
+  "main article",
   '[role="article"]',
+  "main",
   ".post",
   ".content",
   ".article-content",
@@ -19,6 +20,41 @@ const CONTENT_SELECTORS = [
   ".post-content",
   "#content",
   ".story-body",
+  ".prose",
+];
+
+const BOILERPLATE_SELECTORS = [
+  "script",
+  "style",
+  "nav",
+  "footer",
+  "aside",
+  "header",
+  ".ad",
+  ".advertisement",
+  '[class*="toc"]',
+  '[class*="table-of-contents"]',
+  '[class*="related"]',
+  '[class*="breadcrumb"]',
+  '[class*="newsletter"]',
+  '[class*="share"]',
+  '[class*="sidebar"]',
+  '[aria-label*="Table of Contents" i]',
+];
+
+const BOILERPLATE_TEXT_PATTERNS: RegExp[] = [
+  /^Blog\s*\/\s*\w+\s*/i,
+  /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\s*[·•]\s*\w+\s*/i,
+  /^[A-Z][\w\s,.&'-]+(?:\s*&\s*[A-Z][\w\s,.&'-]+)*\s*·\s*\d+\s*min\s+read\s*/i,
+  /^#{0,2}\s*Table of Contents\s*↑?\s*/im,
+  /^↑\s*$/gm,
+  /^Filed under:\s*.+$/im,
+  /^Authors:\s*.+$/im,
+  /^Skip to content\s*/i,
+  /^Sign in\s*Contact\s*Contact sales\s*Download\s*/i,
+  /^Related posts[\s\S]*$/im,
+  /^View more posts[\s\S]*$/im,
+  /^©\s*\d{4}[\s\S]*$/im,
 ];
 
 function normalizeUrl(url: string): string {
@@ -29,8 +65,76 @@ function normalizeUrl(url: string): string {
   return trimmed;
 }
 
-function cleanText(text: string): string {
+function cleanInlineText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeArticleText(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function cleanArticleContent(text: string): string {
+  let result = normalizeArticleText(text);
+
+  for (const pattern of BOILERPLATE_TEXT_PATTERNS) {
+    result = result.replace(pattern, "");
+  }
+
+  const lines = result
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (/^(Sign in|Contact sales|Download|Product|Resources|Company|Legal|Connect)$/i.test(line)) {
+        return false;
+      }
+      if (/^SOC 2 Certified$/i.test(line)) return false;
+      return true;
+    });
+
+  return normalizeArticleText(lines.join("\n\n"));
+}
+
+function extractBlocksFromElement(
+  $: cheerio.CheerioAPI,
+  rootSelector: string,
+): string {
+  const element = $(rootSelector).first().clone();
+  if (!element.length) return "";
+
+  for (const selector of BOILERPLATE_SELECTORS) {
+    element.find(selector).remove();
+  }
+
+  const blocks: string[] = [];
+
+  element.find("h1,h2,h3,h4,h5,h6,p,li,blockquote").each((_, el) => {
+    const $el = $(el);
+    const text = cleanInlineText($el.text());
+    if (!text || text.length < 2) return;
+
+    const tag = el.tagName?.toLowerCase() ?? "";
+    if (/^h[1-6]$/.test(tag)) {
+      const headingText = text.replace(/^#+\s*/, "");
+      const level = Number(tag[1]);
+      const prefix = "#".repeat(level);
+      blocks.push(`${prefix} ${headingText}`);
+      return;
+    }
+
+    blocks.push(text);
+  });
+
+  if (blocks.length > 0) {
+    return blocks.join("\n\n");
+  }
+
+  return normalizeArticleText(element.text());
 }
 
 function extractTitle($: cheerio.CheerioAPI): string {
@@ -38,13 +142,15 @@ function extractTitle($: cheerio.CheerioAPI): string {
     $('meta[property="og:title"]').attr("content"),
     $('meta[name="twitter:title"]').attr("content"),
     $('meta[name="title"]').attr("content"),
+    $("article h1").first().text(),
+    $("main h1").first().text(),
     $("h1").first().text(),
     $("title").text(),
   ];
 
   for (const candidate of candidates) {
     const value = candidate?.trim();
-    if (value) return value;
+    if (value) return cleanInlineText(value);
   }
 
   return "";
@@ -76,15 +182,7 @@ function extractDate($: cheerio.CheerioAPI): string {
 
 function extractContentFromSelectors($: cheerio.CheerioAPI): string {
   for (const selector of CONTENT_SELECTORS) {
-    const element = $(selector).first().clone();
-
-    if (!element.length) continue;
-
-    element
-      .find("script, style, nav, footer, aside, .ad, .advertisement")
-      .remove();
-
-    const text = cleanText(element.text());
+    const text = extractBlocksFromElement($, selector);
     if (text.length > 100) return text;
   }
 
@@ -100,31 +198,33 @@ function extractContentWithReadability(html: string, url: string): string {
     }
 
     const article = new Readability(document, { charThreshold: 100 }).parse();
-    return article?.textContent ? cleanText(article.textContent) : "";
+    return article?.textContent
+      ? normalizeArticleText(article.textContent)
+      : "";
   } catch {
     return "";
   }
 }
 
 function extractContentFallback($: cheerio.CheerioAPI): string {
-  const body = $("body").clone();
-  body.find("script, style, nav, header, footer, aside").remove();
-  return cleanText(body.text()).slice(0, 5000);
+  const text = extractBlocksFromElement($, "body");
+  return text.slice(0, 5000);
 }
 
 function extractContent($: cheerio.CheerioAPI, html: string, url: string): string {
-  return (
+  const raw =
     extractContentFromSelectors($) ||
     extractContentWithReadability(html, url) ||
-    extractContentFallback($)
-  );
+    extractContentFallback($);
+
+  return cleanArticleContent(raw);
 }
 
 export function parseArticleFromText(text: string): ParsedArticle {
   return {
     date: "",
     title: "",
-    content: text.trim(),
+    content: cleanArticleContent(text.trim()),
   };
 }
 
