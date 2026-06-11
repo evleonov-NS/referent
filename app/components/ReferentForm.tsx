@@ -2,12 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import {
+  estimateReplySeconds,
+  estimateTranslationSeconds,
+} from "@/lib/translation";
+
 type ArticleAction = "summary" | "theses" | "translation";
 
 const textareaClass =
   "w-full min-h-30 resize-y rounded-md border border-slate-300 p-3 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
 
-const columnTextareaClass = `${textareaClass} min-h-50`;
+const autoHeightTextareaClass = `${textareaClass} min-h-30 resize-none overflow-hidden`;
 
 const buttonClass =
   "rounded-md bg-blue-600 px-5 py-2.5 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400";
@@ -60,13 +65,24 @@ export default function ReferentForm() {
   const [articleError, setArticleError] = useState("");
   const [articleCopied, setArticleCopied] = useState(false);
   const [articleLoading, setArticleLoading] = useState(false);
+  const [articleLoadingText, setArticleLoadingText] = useState("");
+  const [translationCountdown, setTranslationCountdown] = useState<number | null>(
+    null,
+  );
   const articleResultRef = useRef<HTMLTextAreaElement>(null);
+  const letterTextRef = useRef<HTMLTextAreaElement>(null);
+  const letterTranslationRef = useRef<HTMLTextAreaElement>(null);
+  const replyOriginalRef = useRef<HTMLTextAreaElement>(null);
+  const replyRussianRef = useRef<HTMLTextAreaElement>(null);
 
   const [letterText, setLetterText] = useState("");
   const [letterTranslation, setLetterTranslation] = useState("");
   const [replyOriginal, setReplyOriginal] = useState("");
   const [replyRussian, setReplyRussian] = useState("");
   const [letterError, setLetterError] = useState("");
+  const [letterLoading, setLetterLoading] = useState(false);
+  const [letterLoadingText, setLetterLoadingText] = useState("");
+  const [letterCountdown, setLetterCountdown] = useState<number | null>(null);
   const [translationCopied, setTranslationCopied] = useState(false);
   const [replyOriginalCopied, setReplyOriginalCopied] = useState(false);
   const [replyRussianCopied, setReplyRussianCopied] = useState(false);
@@ -80,39 +96,146 @@ export default function ReferentForm() {
     adjustTextareaHeight(articleResultRef.current);
   }, [articleResult]);
 
-  async function handleArticleAction(_action: ArticleAction) {
+  useEffect(() => {
+    adjustTextareaHeight(letterTextRef.current);
+    adjustTextareaHeight(letterTranslationRef.current);
+    adjustTextareaHeight(replyOriginalRef.current);
+    adjustTextareaHeight(replyRussianRef.current);
+  }, [letterText, letterTranslation, replyOriginal, replyRussian]);
+
+  const isArticleCountingDown = articleLoading && translationCountdown !== null;
+  const isLetterCountingDown = letterLoading && letterCountdown !== null;
+
+  useEffect(() => {
+    if (!isArticleCountingDown) return;
+
+    const timerId = window.setInterval(() => {
+      setTranslationCountdown((prev) => {
+        if (prev === null || prev <= 0) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [isArticleCountingDown]);
+
+  useEffect(() => {
+    if (!isLetterCountingDown) return;
+
+    const timerId = window.setInterval(() => {
+      setLetterCountdown((prev) => {
+        if (prev === null || prev <= 0) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [isLetterCountingDown]);
+
+  async function fetchJson<T>(endpoint: string, payload: object): Promise<T> {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new Error("Сервер вернул некорректный ответ");
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "Не удалось обработать статью");
+    }
+
+    return data as T;
+  }
+
+  async function handleTranslation() {
     const inputType = parseArticleInput(articleInput);
     if (!inputType) {
       setArticleError("Вставьте ссылку на статью или текст.");
       return;
     }
 
+    const parsePayload =
+      inputType === "url"
+        ? { url: articleInput.trim() }
+        : { text: articleInput.trim() };
+
     setArticleError("");
     setArticleCopied(false);
     setArticleLoading(true);
     setArticleResult("");
+    setTranslationCountdown(null);
+    setArticleLoadingText("Загрузка и парсинг статьи...");
 
     try {
-      const response = await fetch("/api/parse-article", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          inputType === "url"
-            ? { url: articleInput.trim() }
-            : { text: articleInput.trim() },
-        ),
-      });
+      const parsed = await fetchJson<{
+        date: string;
+        title: string;
+        content: string;
+      }>("/api/parse-article", parsePayload);
 
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json")) {
-        throw new Error("Сервер вернул некорректный ответ");
+      if (!parsed.content.trim()) {
+        throw new Error("Не удалось извлечь текст статьи");
       }
 
-      const data = await response.json();
+      const estimatedSeconds = estimateTranslationSeconds(parsed.content.length);
+      setTranslationCountdown(estimatedSeconds);
+      setArticleLoadingText(
+        `Текст получен (${parsed.content.length.toLocaleString("ru-RU")} символов). Идёт перевод...`,
+      );
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "Не удалось обработать статью");
-      }
+      const translated = await fetchJson<{ translation: string }>(
+        "/api/translate-article",
+        {
+          text: parsed.content,
+          title: parsed.title,
+          date: parsed.date,
+        },
+      );
+
+      setArticleResult(translated.translation ?? "");
+    } catch (error) {
+      setArticleError(formatError(error));
+    } finally {
+      setArticleLoading(false);
+      setArticleLoadingText("");
+      setTranslationCountdown(null);
+    }
+  }
+
+  async function handleArticleAction(action: ArticleAction) {
+    if (action === "translation") {
+      await handleTranslation();
+      return;
+    }
+    const inputType = parseArticleInput(articleInput);
+    if (!inputType) {
+      setArticleError("Вставьте ссылку на статью или текст.");
+      return;
+    }
+
+    const payload =
+      inputType === "url"
+        ? { url: articleInput.trim() }
+        : { text: articleInput.trim() };
+
+    setArticleError("");
+    setArticleCopied(false);
+    setArticleLoading(true);
+    setArticleResult("");
+    setArticleLoadingText("Загрузка и парсинг статьи...");
+
+    try {
+      const data = await fetchJson<{
+        date: string;
+        title: string;
+        content: string;
+      }>("/api/parse-article", payload);
 
       setArticleResult(
         JSON.stringify(
@@ -129,32 +252,74 @@ export default function ReferentForm() {
       setArticleError(formatError(error));
     } finally {
       setArticleLoading(false);
+      setArticleLoadingText("");
     }
   }
 
-  function handleTranslateLetter() {
+  async function handleTranslateLetter() {
     if (!letterText.trim()) {
       setLetterError("Вставьте текст письма.");
       return;
     }
 
+    const textLength = letterText.trim().length;
+
     setLetterError("");
-    setLetterTranslation(
-      "Подробный перевод письма появится здесь после подключения AI.",
+    setLetterLoading(true);
+    setLetterCountdown(estimateTranslationSeconds(textLength));
+    setLetterLoadingText(
+      `Текст получен (${textLength.toLocaleString("ru-RU")} символов). Идёт перевод письма...`,
     );
+    setLetterTranslation("");
+
+    try {
+      const data = await fetchJson<{ translation: string }>(
+        "/api/translate-letter",
+        { text: letterText.trim() },
+      );
+
+      setLetterTranslation(data.translation ?? "");
+    } catch (error) {
+      setLetterError(formatError(error));
+    } finally {
+      setLetterLoading(false);
+      setLetterLoadingText("");
+      setLetterCountdown(null);
+    }
   }
 
-  function handlePrepareReply() {
+  async function handlePrepareReply() {
     if (!letterText.trim()) {
       setLetterError("Вставьте текст письма.");
       return;
     }
 
+    const textLength = letterText.trim().length;
+
     setLetterError("");
-    setReplyOriginal(
-      "Ответ на языке оригинала появится здесь после подключения AI.",
+    setLetterLoading(true);
+    setLetterCountdown(estimateReplySeconds(textLength));
+    setLetterLoadingText(
+      `Текст получен (${textLength.toLocaleString("ru-RU")} символов). Подготовка ответа...`,
     );
-    setReplyRussian("Ответ на русском появится здесь после подключения AI.");
+    setReplyOriginal("");
+    setReplyRussian("");
+
+    try {
+      const data = await fetchJson<{
+        replyOriginal: string;
+        replyRussian: string;
+      }>("/api/prepare-letter-reply", { text: letterText.trim() });
+
+      setReplyOriginal(data.replyOriginal ?? "");
+      setReplyRussian(data.replyRussian ?? "");
+    } catch (error) {
+      setLetterError(formatError(error));
+    } finally {
+      setLetterLoading(false);
+      setLetterLoadingText("");
+      setLetterCountdown(null);
+    }
   }
 
   return (
@@ -205,8 +370,15 @@ export default function ReferentForm() {
           </button>
         </div>
 
-        {articleLoading && (
-          <p className="mb-5 text-slate-600">Загрузка и парсинг статьи...</p>
+        {articleLoading && articleLoadingText && (
+          <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
+            <p>{articleLoadingText}</p>
+            {translationCountdown !== null && translationCountdown > 0 && (
+              <p className="mt-1 text-sm text-slate-500">
+                Ориентировочное время: ~{translationCountdown} сек.
+              </p>
+            )}
+          </div>
         )}
 
         {articleError && (
@@ -232,7 +404,7 @@ export default function ReferentForm() {
             readOnly
             rows={1}
             className={`${textareaClass} resize-none overflow-hidden ${copyableClass(articleCopied)}`}
-            placeholder="Здесь появится JSON с датой, заголовком и содержимым статьи..."
+            placeholder="Здесь появится результат анализа или перевод статьи..."
             value={articleResult}
             onClick={() =>
               void copyText(articleResult, () => flashCopied(setArticleCopied))
@@ -254,18 +426,31 @@ export default function ReferentForm() {
           <button
             type="button"
             className={buttonClass}
-            onClick={handleTranslateLetter}
+            disabled={letterLoading}
+            onClick={() => void handleTranslateLetter()}
           >
             Перевести письмо
           </button>
           <button
             type="button"
             className={buttonClass}
-            onClick={handlePrepareReply}
+            disabled={letterLoading}
+            onClick={() => void handlePrepareReply()}
           >
             Подготовить ответ
           </button>
         </div>
+
+        {letterLoading && letterLoadingText && (
+          <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
+            <p>{letterLoadingText}</p>
+            {letterCountdown !== null && letterCountdown > 0 && (
+              <p className="mt-1 text-sm text-slate-500">
+                Ориентировочное время: ~{letterCountdown} сек.
+              </p>
+            )}
+          </div>
+        )}
 
         {letterError && <p className="mb-5 text-red-700">{letterError}</p>}
 
@@ -278,8 +463,10 @@ export default function ReferentForm() {
               Текст письма
             </label>
             <textarea
+              ref={letterTextRef}
               id="letter-text"
-              className={columnTextareaClass}
+              rows={1}
+              className={autoHeightTextareaClass}
               placeholder="Вставьте текст письма на иностранном языке..."
               value={letterText}
               onChange={(e) => setLetterText(e.target.value)}
@@ -300,9 +487,11 @@ export default function ReferentForm() {
               )}
             </label>
             <textarea
+              ref={letterTranslationRef}
               id="letter-translation"
               readOnly
-              className={`${columnTextareaClass} ${copyableClass(translationCopied)}`}
+              rows={1}
+              className={`${autoHeightTextareaClass} ${copyableClass(translationCopied)}`}
               placeholder="Здесь появится перевод письма..."
               value={letterTranslation}
               onClick={() =>
@@ -337,9 +526,11 @@ export default function ReferentForm() {
               )}
             </label>
             <textarea
+              ref={replyOriginalRef}
               id="reply-original"
               readOnly
-              className={`${columnTextareaClass} ${copyableClass(replyOriginalCopied)}`}
+              rows={1}
+              className={`${autoHeightTextareaClass} ${copyableClass(replyOriginalCopied)}`}
               placeholder="Здесь появится ответ на языке оригинала..."
               value={replyOriginal}
               onClick={() =>
@@ -370,9 +561,11 @@ export default function ReferentForm() {
               )}
             </label>
             <textarea
+              ref={replyRussianRef}
               id="reply-russian"
               readOnly
-              className={`${columnTextareaClass} ${copyableClass(replyRussianCopied)}`}
+              rows={1}
+              className={`${autoHeightTextareaClass} ${copyableClass(replyRussianCopied)}`}
               placeholder="Здесь появится ответ на русском..."
               value={replyRussian}
               onClick={() =>
