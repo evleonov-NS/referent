@@ -42,10 +42,12 @@ export function isInvalidSummary(
 export function isInvalidTheses(theses: string, sourceLength: number): boolean {
   if (isGarbageAiText(theses)) return true;
 
+  const listItemPattern = /^(?:[-•*]|\d+[.)])\s/;
+
   const listItems = theses
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^[-•*]|\d+[.)]/.test(line));
+    .filter((line) => listItemPattern.test(line));
 
   if (listItems.length < 2 && sourceLength > 200) return true;
   if (theses.trim().length < 30 && sourceLength > 400) return true;

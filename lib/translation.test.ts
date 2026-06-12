@@ -69,6 +69,21 @@ describe("isInvalidTheses", () => {
 
     expect(isInvalidTheses(theses, 1000)).toBe(false);
   });
+
+  it("does not treat version numbers in prose as list markers", () => {
+    const prose = `Composer 2.5 — новая модель в Cursor.
+Hoverify 4.8.1 добавляет экспорт PDF.
+Оба релиза вышли в мае 2026.`;
+
+    expect(isInvalidTheses(prose, 1000)).toBe(true);
+  });
+
+  it("accepts numbered theses", () => {
+    const theses = `1. Composer 2.5 улучшает длительные задачи
+2. Используется targeted RL с текстовой обратной связью`;
+
+    expect(isInvalidTheses(theses, 1000)).toBe(false);
+  });
 });
 
 describe("isInvalidTranslation", () => {
