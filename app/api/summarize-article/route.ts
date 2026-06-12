@@ -6,8 +6,8 @@ import {
   truncateArticleContent,
 } from "@/lib/article-ai";
 import { chatCompletion } from "@/lib/openrouter";
-import { ARTICLE_TRANSLATION_SYSTEM_PROMPT } from "@/lib/prompts";
-import { isInvalidTranslation } from "@/lib/translation";
+import { ARTICLE_SUMMARY_SYSTEM_PROMPT } from "@/lib/prompts";
+import { isInvalidSummary } from "@/lib/translation";
 
 const MAX_ATTEMPTS = 3;
 
@@ -23,36 +23,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contentForTranslation = truncateArticleContent(article.content);
+    const contentForAnalysis = truncateArticleContent(article.content);
     const userPrompt = buildArticleUserPrompt(
-      contentForTranslation,
+      contentForAnalysis,
       article.title,
       article.date,
     );
 
-    let translation = "";
+    let summary = "";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      translation = await chatCompletion([
-        { role: "system", content: ARTICLE_TRANSLATION_SYSTEM_PROMPT },
+      summary = await chatCompletion([
+        { role: "system", content: ARTICLE_SUMMARY_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ]);
 
-      if (!isInvalidTranslation(translation, article.content.length)) {
-        return NextResponse.json({ translation });
+      if (!isInvalidSummary(summary, article.content.length)) {
+        return NextResponse.json({ summary });
       }
     }
 
     return NextResponse.json(
       {
         error:
-          "Модель не вернула перевод. Попробуйте ещё раз или выберите другую модель в OPENROUTER_MODEL.",
+          "Модель не вернула описание статьи. Попробуйте ещё раз или выберите другую модель в OPENROUTER_MODEL.",
       },
       { status: 502 },
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Ошибка перевода статьи";
+      error instanceof Error ? error.message : "Ошибка анализа статьи";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

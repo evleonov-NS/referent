@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   estimateReplySeconds,
+  estimateSummarySeconds,
+  estimateThesesSeconds,
   estimateTranslationSeconds,
 } from "@/lib/translation";
 
@@ -153,7 +155,15 @@ export default function ReferentForm() {
     return data as T;
   }
 
-  async function handleTranslation() {
+  async function runArticleAction(
+    action: ArticleAction,
+    options: {
+      endpoint: string;
+      progressText: string;
+      estimateSeconds: (charCount: number) => number;
+      pickResult: (data: Record<string, string | undefined>) => string;
+    },
+  ) {
     const inputType = parseArticleInput(articleInput);
     if (!inputType) {
       setArticleError("Вставьте ссылку на статью или текст.");
@@ -183,14 +193,14 @@ export default function ReferentForm() {
         throw new Error("Не удалось извлечь текст статьи");
       }
 
-      const estimatedSeconds = estimateTranslationSeconds(parsed.content.length);
+      const estimatedSeconds = options.estimateSeconds(parsed.content.length);
       setTranslationCountdown(estimatedSeconds);
       setArticleLoadingText(
-        `Текст получен (${parsed.content.length.toLocaleString("ru-RU")} символов). Идёт перевод...`,
+        `Текст получен (${parsed.content.length.toLocaleString("ru-RU")} символов). ${options.progressText}`,
       );
 
-      const translated = await fetchJson<{ translation: string }>(
-        "/api/translate-article",
+      const result = await fetchJson<Record<string, string | undefined>>(
+        options.endpoint,
         {
           text: parsed.content,
           title: parsed.title,
@@ -198,7 +208,7 @@ export default function ReferentForm() {
         },
       );
 
-      setArticleResult(translated.translation ?? "");
+      setArticleResult(options.pickResult(result));
     } catch (error) {
       setArticleError(formatError(error));
     } finally {
@@ -210,50 +220,31 @@ export default function ReferentForm() {
 
   async function handleArticleAction(action: ArticleAction) {
     if (action === "translation") {
-      await handleTranslation();
+      await runArticleAction("translation", {
+        endpoint: "/api/translate-article",
+        progressText: "Идёт перевод...",
+        estimateSeconds: estimateTranslationSeconds,
+        pickResult: (data) => data.translation ?? "",
+      });
       return;
     }
-    const inputType = parseArticleInput(articleInput);
-    if (!inputType) {
-      setArticleError("Вставьте ссылку на статью или текст.");
+
+    if (action === "summary") {
+      await runArticleAction("summary", {
+        endpoint: "/api/summarize-article",
+        progressText: "Анализ статьи...",
+        estimateSeconds: estimateSummarySeconds,
+        pickResult: (data) => data.summary ?? "",
+      });
       return;
     }
 
-    const payload =
-      inputType === "url"
-        ? { url: articleInput.trim() }
-        : { text: articleInput.trim() };
-
-    setArticleError("");
-    setArticleCopied(false);
-    setArticleLoading(true);
-    setArticleResult("");
-    setArticleLoadingText("Загрузка и парсинг статьи...");
-
-    try {
-      const data = await fetchJson<{
-        date: string;
-        title: string;
-        content: string;
-      }>("/api/parse-article", payload);
-
-      setArticleResult(
-        JSON.stringify(
-          {
-            date: data.date ?? "",
-            title: data.title ?? "",
-            content: data.content ?? "",
-          },
-          null,
-          2,
-        ),
-      );
-    } catch (error) {
-      setArticleError(formatError(error));
-    } finally {
-      setArticleLoading(false);
-      setArticleLoadingText("");
-    }
+    await runArticleAction("theses", {
+      endpoint: "/api/article-theses",
+      progressText: "Выделение тезисов...",
+      estimateSeconds: estimateThesesSeconds,
+      pickResult: (data) => data.theses ?? "",
+    });
   }
 
   async function handleTranslateLetter() {
