@@ -15,12 +15,20 @@ import {
 type ArticleAction = "summary" | "theses" | "translation";
 
 const textareaClass =
-  "w-full min-h-30 resize-y rounded-md border border-slate-300 p-3 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
+  "box-border w-full min-w-0 max-w-full min-h-30 resize-y break-words rounded-md border border-slate-300 p-3 text-base text-slate-900 placeholder:text-slate-400 [overflow-wrap:anywhere] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-sm";
 
 const autoHeightTextareaClass = `${textareaClass} min-h-30 resize-none overflow-hidden`;
 
 const buttonClass =
-  "rounded-md bg-blue-600 px-5 py-2.5 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400";
+  "rounded-md bg-blue-600 px-5 py-2.5 text-center text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400";
+
+const secondaryButtonClass =
+  "rounded-md border border-slate-300 bg-white px-5 py-2.5 text-center text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const actionButtonGroupClass =
+  "mb-5 flex w-full flex-col gap-3 md:flex-row md:flex-wrap";
+
+const actionButtonClass = `${buttonClass} w-full md:w-auto`;
 
 function parseArticleInput(value: string): "url" | "text" | null {
   const trimmed = value.trim();
@@ -62,7 +70,10 @@ export default function ReferentForm() {
     null,
   );
   const articleResultRef = useRef<HTMLTextAreaElement>(null);
+  const articleResultSectionRef = useRef<HTMLDivElement>(null);
   const letterTextRef = useRef<HTMLTextAreaElement>(null);
+  const letterTranslationSectionRef = useRef<HTMLDivElement>(null);
+  const letterRepliesSectionRef = useRef<HTMLDivElement>(null);
   const letterTranslationRef = useRef<HTMLTextAreaElement>(null);
   const replyOriginalRef = useRef<HTMLTextAreaElement>(null);
   const replyRussianRef = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +141,36 @@ export default function ReferentForm() {
     textarea.style.height = `${textarea.scrollHeight}px`;
   }
 
+  function scrollToSection(ref: React.RefObject<HTMLElement | null>) {
+    requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function handleClear() {
+    setArticleInput("");
+    setArticleResult("");
+    setArticleError("");
+    setArticleCopied(false);
+    setArticleLoading(false);
+    setArticleLoadingText("");
+    setTranslationCountdown(null);
+
+    setLetterText("");
+    setLetterTranslation("");
+    setReplyOriginal("");
+    setReplyRussian("");
+    setLetterError("");
+    setLetterLoading(false);
+    setLetterLoadingText("");
+    setLetterCountdown(null);
+    setTranslationCopied(false);
+    setReplyOriginalCopied(false);
+    setReplyRussianCopied(false);
+  }
+
+  const isBusy = articleLoading || letterLoading;
+
   async function runArticleAction(
     action: ArticleAction,
     options: {
@@ -185,6 +226,7 @@ export default function ReferentForm() {
       );
 
       setArticleResult(options.pickResult(result));
+      scrollToSection(articleResultSectionRef);
     } catch (error) {
       setArticleError(resolveClientError(error));
     } finally {
@@ -246,6 +288,7 @@ export default function ReferentForm() {
       );
 
       setLetterTranslation(data.translation ?? "");
+      scrollToSection(letterTranslationSectionRef);
     } catch (error) {
       setLetterError(resolveClientError(error));
     } finally {
@@ -280,6 +323,7 @@ export default function ReferentForm() {
 
       setReplyOriginal(data.replyOriginal ?? "");
       setReplyRussian(data.replyRussian ?? "");
+      scrollToSection(letterRepliesSectionRef);
     } catch (error) {
       setLetterError(resolveClientError(error));
     } finally {
@@ -290,9 +334,22 @@ export default function ReferentForm() {
   }
 
   return (
-    <div className="space-y-10">
-      <section className="border-b border-slate-200 pb-10">
-        <h2 className="mb-5 text-xl font-semibold text-slate-900">Статьи</h2>
+    <div className="min-w-0 space-y-8 md:space-y-10">
+      <div className="flex w-full justify-stretch md:justify-end">
+        <button
+          type="button"
+          className={`${secondaryButtonClass} w-full md:w-auto`}
+          disabled={isBusy}
+          onClick={handleClear}
+        >
+          Очистить
+        </button>
+      </div>
+
+      <section className="border-b border-slate-200 pb-8 md:pb-10">
+        <h2 className="mb-4 text-lg font-semibold text-slate-900 md:mb-5 md:text-xl">
+          Статьи
+        </h2>
 
         <div className="mb-5">
           <label
@@ -310,10 +367,10 @@ export default function ReferentForm() {
           />
         </div>
 
-        <div className="mb-5 flex flex-wrap gap-3">
+        <div className={actionButtonGroupClass} data-testid="article-actions">
           <button
             type="button"
-            className={buttonClass}
+            className={actionButtonClass}
             disabled={articleLoading}
             onClick={() => void handleArticleAction("summary")}
           >
@@ -321,7 +378,7 @@ export default function ReferentForm() {
           </button>
           <button
             type="button"
-            className={buttonClass}
+            className={actionButtonClass}
             disabled={articleLoading}
             onClick={() => void handleArticleAction("theses")}
           >
@@ -329,7 +386,7 @@ export default function ReferentForm() {
           </button>
           <button
             type="button"
-            className={buttonClass}
+            className={actionButtonClass}
             disabled={articleLoading}
             onClick={() => void handleArticleAction("translation")}
           >
@@ -338,7 +395,7 @@ export default function ReferentForm() {
         </div>
 
         {articleLoading && articleLoadingText && (
-          <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
+          <div className="mb-5 break-words rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
             <p>{articleLoadingText}</p>
             {translationCountdown !== null && translationCountdown > 0 && (
               <p className="mt-1 text-sm text-slate-500">
@@ -350,15 +407,14 @@ export default function ReferentForm() {
 
         {articleError && <ErrorAlert className="mb-5" message={articleError} />}
 
-        <div className="relative">
+        <div ref={articleResultSectionRef} className="relative min-w-0 scroll-mt-6">
           <label
             htmlFor="article-result"
             className="mb-1.5 block font-medium text-slate-900"
           >
             Результат
             {articleResult && (
-              <span className="text-sm font-normal text-slate-500">
-                {" "}
+              <span className="mt-1 block text-sm font-normal text-slate-500 md:mt-0 md:inline">
                 — нажмите, чтобы скопировать
               </span>
             )}
@@ -385,12 +441,14 @@ export default function ReferentForm() {
       </section>
 
       <section>
-        <h2 className="mb-5 text-xl font-semibold text-slate-900">Письма</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-900 md:mb-5 md:text-xl">
+          Письма
+        </h2>
 
-        <div className="mb-5 flex flex-wrap gap-3">
+        <div className={actionButtonGroupClass} data-testid="letter-actions">
           <button
             type="button"
-            className={buttonClass}
+            className={actionButtonClass}
             disabled={letterLoading}
             onClick={() => void handleTranslateLetter()}
           >
@@ -398,7 +456,7 @@ export default function ReferentForm() {
           </button>
           <button
             type="button"
-            className={buttonClass}
+            className={actionButtonClass}
             disabled={letterLoading}
             onClick={() => void handlePrepareReply()}
           >
@@ -407,7 +465,7 @@ export default function ReferentForm() {
         </div>
 
         {letterLoading && letterLoadingText && (
-          <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
+          <div className="mb-5 break-words rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-slate-700">
             <p>{letterLoadingText}</p>
             {letterCountdown !== null && letterCountdown > 0 && (
               <p className="mt-1 text-sm text-slate-500">
@@ -419,8 +477,8 @@ export default function ReferentForm() {
 
         {letterError && <ErrorAlert className="mb-5" message={letterError} />}
 
-        <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
+        <div className="mb-5 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="min-w-0">
             <label
               htmlFor="letter-text"
               className="mb-1.5 block font-medium text-slate-900"
@@ -438,15 +496,17 @@ export default function ReferentForm() {
             />
           </div>
 
-          <div className="relative">
+          <div
+            ref={letterTranslationSectionRef}
+            className="relative min-w-0 scroll-mt-6"
+          >
             <label
               htmlFor="letter-translation"
               className="mb-1.5 block font-medium text-slate-900"
             >
               Перевод
               {letterTranslation && (
-                <span className="text-sm font-normal text-slate-500">
-                  {" "}
+                <span className="mt-1 block text-sm font-normal text-slate-500 md:mt-0 md:inline">
                   — нажмите, чтобы скопировать
                 </span>
               )}
@@ -476,16 +536,18 @@ export default function ReferentForm() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="relative">
+        <div
+          ref={letterRepliesSectionRef}
+          className="grid min-w-0 scroll-mt-6 grid-cols-1 gap-4 md:grid-cols-2"
+        >
+          <div className="relative min-w-0">
             <label
               htmlFor="reply-original"
               className="mb-1.5 block font-medium text-slate-900"
             >
               Ответ на языке оригинала
               {replyOriginal && (
-                <span className="text-sm font-normal text-slate-500">
-                  {" "}
+                <span className="mt-1 block text-sm font-normal text-slate-500 md:mt-0 md:inline">
                   — нажмите, чтобы скопировать
                 </span>
               )}
@@ -512,15 +574,14 @@ export default function ReferentForm() {
             )}
           </div>
 
-          <div className="relative">
+          <div className="relative min-w-0">
             <label
               htmlFor="reply-russian"
               className="mb-1.5 block font-medium text-slate-900"
             >
               Ответ на русском
               {replyRussian && (
-                <span className="text-sm font-normal text-slate-500">
-                  {" "}
+                <span className="mt-1 block text-sm font-normal text-slate-500 md:mt-0 md:inline">
                   — нажмите, чтобы скопировать
                 </span>
               )}
