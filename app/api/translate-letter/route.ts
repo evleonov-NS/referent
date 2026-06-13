@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
+import { apiErrorResponse, handleApiError } from "@/lib/api-error-response";
+import { AppErrorCode } from "@/lib/app-errors";
 import { chatCompletion } from "@/lib/openrouter";
 import { LETTER_TRANSLATION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { isInvalidTranslation } from "@/lib/translation";
@@ -17,10 +19,7 @@ export async function POST(request: NextRequest) {
     const text = typeof body.text === "string" ? body.text.trim() : "";
 
     if (!text) {
-      return NextResponse.json(
-        { error: "Вставьте текст письма" },
-        { status: 400 },
-      );
+      return apiErrorResponse(AppErrorCode.LETTER_INPUT_REQUIRED);
     }
 
     const letterText = truncateLetter(text);
@@ -39,24 +38,12 @@ export async function POST(request: NextRequest) {
       ]);
 
       if (!isInvalidTranslation(translation, text.length)) {
-        return NextResponse.json({ translation });
+        return Response.json({ translation });
       }
     }
 
-    if (isInvalidTranslation(translation, text.length)) {
-      return NextResponse.json(
-        {
-          error:
-            "Модель не вернула перевод письма. Попробуйте ещё раз или выберите другую модель в OPENROUTER_MODEL.",
-        },
-        { status: 502 },
-      );
-    }
-
+    return apiErrorResponse(AppErrorCode.AI_EMPTY_RESPONSE);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Ошибка перевода письма";
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -32,32 +32,36 @@ test.describe("Референт", () => {
 
   test("требует текст письма для перевода", async ({ page }) => {
     await page.getByRole("button", { name: "Перевести письмо" }).click();
-    await expect(page.getByText("Вставьте текст письма.")).toBeVisible();
+    await expect(
+      page.getByRole("alert").getByText("Вставьте текст письма."),
+    ).toBeVisible();
   });
 
   test("требует текст письма для подготовки ответа", async ({ page }) => {
     await page.getByRole("button", { name: "Подготовить ответ" }).click();
-    await expect(page.getByText("Вставьте текст письма.")).toBeVisible();
+    await expect(
+      page.getByRole("alert").getByText("Вставьте текст письма."),
+    ).toBeVisible();
   });
 
   test("требует ввод статьи для подробного перевода", async ({ page }) => {
     await page.getByRole("button", { name: "Подробный перевод" }).click();
     await expect(
-      page.getByText("Вставьте ссылку на статью или текст."),
+      page.getByRole("alert").getByText("Вставьте ссылку на статью или текст."),
     ).toBeVisible();
   });
 
   test("требует ввод статьи для «О чем статья?»", async ({ page }) => {
     await page.getByRole("button", { name: "О чем статья?" }).click();
     await expect(
-      page.getByText("Вставьте ссылку на статью или текст."),
+      page.getByRole("alert").getByText("Вставьте ссылку на статью или текст."),
     ).toBeVisible();
   });
 
   test("требует ввод статьи для «Тезисы»", async ({ page }) => {
     await page.getByRole("button", { name: "Тезисы" }).click();
     await expect(
-      page.getByText("Вставьте ссылку на статью или текст."),
+      page.getByRole("alert").getByText("Вставьте ссылку на статью или текст."),
     ).toBeVisible();
   });
 });

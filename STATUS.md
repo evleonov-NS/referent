@@ -89,6 +89,7 @@
 | Vitest + Playwright E2E | ✅ | 11.06.2026 |
 
 | Smoke API (`scripts/smoke-api.ps1`) | ✅ | 11.06.2026 |
+| Дружественные ошибки (коды + shadcn Alert) | ✅ | 11.06.2026 |
 
 | `.env.example` для API-ключей | ✅ | 11.06.2026 |
 

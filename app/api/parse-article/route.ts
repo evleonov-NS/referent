@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
+import { apiErrorResponse, handleApiError } from "@/lib/api-error-response";
+import { AppErrorCode } from "@/lib/app-errors";
 import {
   fetchAndParseArticle,
   parseArticleFromText,
@@ -13,21 +15,15 @@ export async function POST(request: NextRequest) {
 
     if (url) {
       const parsed = await fetchAndParseArticle(url);
-      return NextResponse.json(parsed);
+      return Response.json(parsed);
     }
 
     if (text) {
-      return NextResponse.json(parseArticleFromText(text));
+      return Response.json(parseArticleFromText(text));
     }
 
-    return NextResponse.json(
-      { error: "Укажите url или text" },
-      { status: 400 },
-    );
+    return apiErrorResponse(AppErrorCode.ARTICLE_INPUT_REQUIRED);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Ошибка парсинга статьи";
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(error);
   }
 }

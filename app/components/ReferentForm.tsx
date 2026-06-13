@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { ErrorAlert } from "@/app/components/ErrorAlert";
+import { AppErrorCode, getErrorMessage } from "@/lib/app-errors";
+import { fetchApi, resolveClientError } from "@/lib/client-api";
 import {
   estimateReplySeconds,
   estimateSummarySeconds,
@@ -35,19 +38,6 @@ function copyableClass(copied: boolean) {
     "cursor-pointer transition-colors hover:border-blue-500",
     copied ? "border-green-500 bg-green-50" : "bg-white",
   ].join(" ");
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  if (error instanceof Event) return "Операция прервана";
-  return "Неизвестная ошибка";
-}
-
-function adjustTextareaHeight(textarea: HTMLTextAreaElement | null) {
-  if (!textarea) return;
-  textarea.style.height = "auto";
-  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 async function copyText(text: string, onCopied: () => void) {
@@ -134,25 +124,10 @@ export default function ReferentForm() {
     return () => window.clearInterval(timerId);
   }, [isLetterCountingDown]);
 
-  async function fetchJson<T>(endpoint: string, payload: object): Promise<T> {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("application/json")) {
-      throw new Error("Сервер вернул некорректный ответ");
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error ?? "Не удалось обработать статью");
-    }
-
-    return data as T;
+  function adjustTextareaHeight(textarea: HTMLTextAreaElement | null) {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }
 
   async function runArticleAction(
@@ -166,7 +141,7 @@ export default function ReferentForm() {
   ) {
     const inputType = parseArticleInput(articleInput);
     if (!inputType) {
-      setArticleError("Вставьте ссылку на статью или текст.");
+      setArticleError(getErrorMessage(AppErrorCode.ARTICLE_INPUT_REQUIRED));
       return;
     }
 
@@ -183,14 +158,15 @@ export default function ReferentForm() {
     setArticleLoadingText("Загрузка и парсинг статьи...");
 
     try {
-      const parsed = await fetchJson<{
+      const parsed = await fetchApi<{
         date: string;
         title: string;
         content: string;
       }>("/api/parse-article", parsePayload);
 
       if (!parsed.content.trim()) {
-        throw new Error("Не удалось извлечь текст статьи");
+        setArticleError(getErrorMessage(AppErrorCode.ARTICLE_EMPTY_CONTENT));
+        return;
       }
 
       const estimatedSeconds = options.estimateSeconds(parsed.content.length);
@@ -199,7 +175,7 @@ export default function ReferentForm() {
         `Текст получен (${parsed.content.length.toLocaleString("ru-RU")} символов). ${options.progressText}`,
       );
 
-      const result = await fetchJson<Record<string, string | undefined>>(
+      const result = await fetchApi<Record<string, string | undefined>>(
         options.endpoint,
         {
           text: parsed.content,
@@ -210,7 +186,7 @@ export default function ReferentForm() {
 
       setArticleResult(options.pickResult(result));
     } catch (error) {
-      setArticleError(formatError(error));
+      setArticleError(resolveClientError(error));
     } finally {
       setArticleLoading(false);
       setArticleLoadingText("");
@@ -249,7 +225,7 @@ export default function ReferentForm() {
 
   async function handleTranslateLetter() {
     if (!letterText.trim()) {
-      setLetterError("Вставьте текст письма.");
+      setLetterError(getErrorMessage(AppErrorCode.LETTER_INPUT_REQUIRED));
       return;
     }
 
@@ -264,14 +240,14 @@ export default function ReferentForm() {
     setLetterTranslation("");
 
     try {
-      const data = await fetchJson<{ translation: string }>(
+      const data = await fetchApi<{ translation: string }>(
         "/api/translate-letter",
         { text: letterText.trim() },
       );
 
       setLetterTranslation(data.translation ?? "");
     } catch (error) {
-      setLetterError(formatError(error));
+      setLetterError(resolveClientError(error));
     } finally {
       setLetterLoading(false);
       setLetterLoadingText("");
@@ -281,7 +257,7 @@ export default function ReferentForm() {
 
   async function handlePrepareReply() {
     if (!letterText.trim()) {
-      setLetterError("Вставьте текст письма.");
+      setLetterError(getErrorMessage(AppErrorCode.LETTER_INPUT_REQUIRED));
       return;
     }
 
@@ -297,7 +273,7 @@ export default function ReferentForm() {
     setReplyRussian("");
 
     try {
-      const data = await fetchJson<{
+      const data = await fetchApi<{
         replyOriginal: string;
         replyRussian: string;
       }>("/api/prepare-letter-reply", { text: letterText.trim() });
@@ -305,7 +281,7 @@ export default function ReferentForm() {
       setReplyOriginal(data.replyOriginal ?? "");
       setReplyRussian(data.replyRussian ?? "");
     } catch (error) {
-      setLetterError(formatError(error));
+      setLetterError(resolveClientError(error));
     } finally {
       setLetterLoading(false);
       setLetterLoadingText("");
@@ -372,9 +348,7 @@ export default function ReferentForm() {
           </div>
         )}
 
-        {articleError && (
-          <p className="mb-5 text-red-700">{articleError}</p>
-        )}
+        {articleError && <ErrorAlert className="mb-5" message={articleError} />}
 
         <div className="relative">
           <label
@@ -443,7 +417,7 @@ export default function ReferentForm() {
           </div>
         )}
 
-        {letterError && <p className="mb-5 text-red-700">{letterError}</p>}
+        {letterError && <ErrorAlert className="mb-5" message={letterError} />}
 
         <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>

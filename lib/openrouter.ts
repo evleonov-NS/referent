@@ -1,3 +1,5 @@
+import { AppError, AppErrorCode } from "@/lib/app-errors";
+
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const DEFAULT_FREE_MODELS = ["openrouter/free"] as const;
@@ -30,22 +32,20 @@ function parseErrorMessage(errorText: string): string {
   }
 }
 
-function formatOpenRouterError(status: number, errorText: string): string {
-  const message = parseErrorMessage(errorText);
-
-  if (status === 402) {
-    return "Недостаточно кредитов на OpenRouter. Пополните баланс на openrouter.ai/settings/credits или используйте бесплатную модель (уберите OPENROUTER_MODEL из .env.local).";
-  }
-
-  return `Ошибка OpenRouter: ${message}`;
-}
-
 function isRetriableModelError(status: number, message: string): boolean {
   if (status === 402 || status === 404 || status === 429) return true;
 
   return /unavailable for free|insufficient credits|no endpoints|not found|rate limit/i.test(
     message,
   );
+}
+
+function toOpenRouterAppError(status: number, retriable = false): AppError {
+  if (status === 402) {
+    return new AppError(AppErrorCode.AI_CREDITS_EXHAUSTED, { retriable });
+  }
+
+  return new AppError(AppErrorCode.AI_UNAVAILABLE, { retriable });
 }
 
 function extractMessageContent(message: {
@@ -93,27 +93,21 @@ async function requestWithModel(
   if (!response.ok) {
     const errorText = await response.text();
     const message = parseErrorMessage(errorText);
-    const error = new Error(formatOpenRouterError(response.status, errorText));
-    (error as Error & { status?: number; retriable?: boolean }).status =
-      response.status;
-    (error as Error & { status?: number; retriable?: boolean }).retriable =
-      isRetriableModelError(response.status, message);
-    throw error;
+    throw toOpenRouterAppError(
+      response.status,
+      isRetriableModelError(response.status, message),
+    );
   }
 
   const data = await response.json();
   const content = extractMessageContent(data.choices?.[0]?.message ?? {});
 
   if (!content) {
-    const error = new Error("Модель вернула пустой ответ");
-    (error as Error & { retriable?: boolean }).retriable = true;
-    throw error;
+    throw new AppError(AppErrorCode.AI_EMPTY_RESPONSE, { retriable: true });
   }
 
   if (isGarbageModelContent(content)) {
-    const error = new Error("Модель вернула служебный ответ вместо результата");
-    (error as Error & { retriable?: boolean }).retriable = true;
-    throw error;
+    throw new AppError(AppErrorCode.AI_EMPTY_RESPONSE, { retriable: true });
   }
 
   return content;
@@ -123,27 +117,27 @@ export async function chatCompletion(messages: ChatMessage[]): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY не настроен в .env.local");
+    throw new AppError(AppErrorCode.AI_CONFIG_MISSING);
   }
 
   const models = getModelCandidates();
-  let lastError: Error | null = null;
+  let lastError: AppError | null = null;
 
   for (const model of models) {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
       try {
         return await requestWithModel(model, messages, apiKey);
       } catch (error) {
-        if (!(error instanceof Error)) throw error;
+        if (!(error instanceof AppError)) {
+          throw error;
+        }
 
         lastError = error;
 
-        const retriable =
-          (error as Error & { retriable?: boolean }).retriable === true;
         const isLastAttempt = attempt === MAX_ATTEMPTS_PER_MODEL;
         const isLastModel = model === models[models.length - 1];
 
-        if (!retriable || (isLastAttempt && isLastModel)) {
+        if (!error.retriable || (isLastAttempt && isLastModel)) {
           throw error;
         }
 
@@ -154,5 +148,5 @@ export async function chatCompletion(messages: ChatMessage[]): Promise<string> {
     }
   }
 
-  throw lastError ?? new Error("Не удалось выполнить запрос к OpenRouter");
+  throw lastError ?? new AppError(AppErrorCode.AI_UNAVAILABLE);
 }

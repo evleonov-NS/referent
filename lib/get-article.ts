@@ -1,3 +1,4 @@
+import { AppError, AppErrorCode } from "@/lib/app-errors";
 import {
   fetchAndParseArticle,
   parseArticleFromText,
@@ -16,5 +17,5 @@ export async function getArticleFromInput(
     return parseArticleFromText(text);
   }
 
-  throw new Error("Укажите url или text");
+  throw new AppError(AppErrorCode.ARTICLE_INPUT_REQUIRED);
 }

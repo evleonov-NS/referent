@@ -2,6 +2,8 @@ import { Readability } from "@mozilla/readability";
 import * as cheerio from "cheerio";
 import { parseHTML } from "linkedom";
 
+import { AppError, AppErrorCode } from "@/lib/app-errors";
+
 export type ParsedArticle = {
   date: string;
   title: string;
@@ -231,24 +233,29 @@ export function parseArticleFromText(text: string): ParsedArticle {
 export async function fetchAndParseArticle(rawUrl: string): Promise<ParsedArticle> {
   const url = normalizeUrl(rawUrl);
 
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; ReferentBot/1.0)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-    signal: AbortSignal.timeout(15000),
-  });
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ReferentBot/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Не удалось загрузить страницу: HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new AppError(AppErrorCode.ARTICLE_FETCH_FAILED);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    return {
+      date: extractDate($),
+      title: extractTitle($),
+      content: extractContent($, html, url),
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(AppErrorCode.ARTICLE_FETCH_FAILED);
   }
-
-  const html = await response.text();
-  const $ = cheerio.load(html);
-
-  return {
-    date: extractDate($),
-    title: extractTitle($),
-    content: extractContent($, html, url),
-  };
 }

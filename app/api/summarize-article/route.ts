@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
+import { apiErrorResponse, handleApiError } from "@/lib/api-error-response";
+import { AppErrorCode } from "@/lib/app-errors";
 import {
   buildArticleUserPrompt,
   resolveArticleFromRequest,
@@ -17,10 +19,7 @@ export async function POST(request: NextRequest) {
     const article = await resolveArticleFromRequest(body);
 
     if (!article.content.trim()) {
-      return NextResponse.json(
-        { error: "Не удалось извлечь текст статьи" },
-        { status: 400 },
-      );
+      return apiErrorResponse(AppErrorCode.ARTICLE_EMPTY_CONTENT);
     }
 
     const contentForAnalysis = truncateArticleContent(article.content);
@@ -39,21 +38,12 @@ export async function POST(request: NextRequest) {
       ]);
 
       if (!isInvalidSummary(summary, article.content.length)) {
-        return NextResponse.json({ summary });
+        return Response.json({ summary });
       }
     }
 
-    return NextResponse.json(
-      {
-        error:
-          "Модель не вернула описание статьи. Попробуйте ещё раз или выберите другую модель в OPENROUTER_MODEL.",
-      },
-      { status: 502 },
-    );
+    return apiErrorResponse(AppErrorCode.AI_EMPTY_RESPONSE);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Ошибка анализа статьи";
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(error);
   }
 }

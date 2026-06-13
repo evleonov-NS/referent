@@ -15,10 +15,14 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "cheerio": "^1.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "linkedom": "^0.18.12",
+    "lucide-react": "^1.18.0",
     "next": "^15.3.3",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

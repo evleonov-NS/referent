@@ -35,7 +35,7 @@ function Invoke-ApiTest {
         return $true
     }
     catch {
-        Write-Host "FAIL: $($_.ErrorDetails.Message)" -ForegroundColor Red
+        Write-Host "FAIL: $($_.Exception.Message)" -ForegroundColor Red
         if (-not $_.ErrorDetails.Message) { Write-Host $_.Exception.Message -ForegroundColor Red }
         return $false
     }
