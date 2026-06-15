@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export { maxDuration } from "@/lib/api-route-config";
+
 import { apiErrorResponse, handleApiError } from "@/lib/api-error-response";
 import { AppErrorCode } from "@/lib/app-errors";
 import { resolveArticleFromRequest } from "@/lib/article-ai";

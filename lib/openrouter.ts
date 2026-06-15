@@ -1,4 +1,4 @@
-import { AppError, AppErrorCode } from "@/lib/app-errors";
+import { AppError, AppErrorCode, getErrorText } from "@/lib/app-errors";
 import { httpsPost } from "@/lib/http-ipv4";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -53,11 +53,13 @@ function mapTransportError(error: unknown): AppError {
   if (error instanceof AppError) return error;
 
   if (error instanceof Error) {
-    if (/CONNECT_TIMEOUT|ETIMEDOUT|timeout/i.test(error.message)) {
+    const text = getErrorText(error);
+
+    if (/CONNECT_TIMEOUT|ETIMEDOUT|timeout/i.test(text)) {
       return new AppError(AppErrorCode.AI_UNAVAILABLE, { retriable: true });
     }
 
-    if (/ENOTFOUND|ECONNREFUSED|fetch failed/i.test(error.message)) {
+    if (/ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed/i.test(text)) {
       return new AppError(AppErrorCode.NETWORK_ERROR);
     }
   }

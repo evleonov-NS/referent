@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export { maxDuration } from "@/lib/api-route-config";
+
 import { apiErrorResponse, handleApiError } from "@/lib/api-error-response";
 import { AppErrorCode } from "@/lib/app-errors";
 import {
@@ -51,10 +53,12 @@ export async function POST(request: NextRequest) {
       return apiErrorResponse(AppErrorCode.AI_EMPTY_RESPONSE);
     }
 
-    const [translation, image] = await Promise.all([
-      translateArticleText(article.content, article.title, article.date),
-      generateIllustration(imagePrompt.trim()),
-    ]);
+    const image = await generateIllustration(imagePrompt.trim());
+    const translation = await translateArticleText(
+      article.content,
+      article.title,
+      article.date,
+    );
 
     if (isInvalidTranslation(translation, article.content.length)) {
       return apiErrorResponse(AppErrorCode.AI_EMPTY_RESPONSE);

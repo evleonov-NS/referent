@@ -100,12 +100,32 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+export function getErrorText(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+
+  const parts = [error.message, error.name];
+
+  if (error.cause) {
+    parts.push(getErrorText(error.cause));
+  }
+
+  if (error instanceof AggregateError) {
+    for (const inner of error.errors) {
+      parts.push(getErrorText(inner));
+    }
+  }
+
+  return parts.join(" ");
+}
+
 function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
+  const text = getErrorText(error);
+
   return (
     error instanceof TypeError ||
-    /fetch failed|network|ECONNREFUSED|ENOTFOUND/i.test(error.message)
+    /fetch failed|network|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(text)
   );
 }
 

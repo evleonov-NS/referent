@@ -1,5 +1,10 @@
 import https from "node:https";
 
+function shouldForceIpv4(): boolean {
+  // На Vercel принудительный IPv4 ломает исходящие HTTPS-запросы к OpenRouter и HF.
+  return process.env.VERCEL !== "1" && process.platform === "win32";
+}
+
 export type HttpsResponse = {
   status: number;
   headers: Record<string, string | string[] | undefined>;
@@ -28,7 +33,7 @@ function httpsRequest(
         port: 443,
         path: `${parsed.pathname}${parsed.search}`,
         method,
-        family: 4,
+        ...(shouldForceIpv4() ? { family: 4 as const } : {}),
         headers: requestHeaders,
         timeout: timeoutMs,
       },
