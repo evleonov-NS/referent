@@ -6,13 +6,14 @@ import { ErrorAlert } from "@/app/components/ErrorAlert";
 import { AppErrorCode, getErrorMessage } from "@/lib/app-errors";
 import { fetchApi, resolveClientError } from "@/lib/client-api";
 import {
+  estimateIllustrationSeconds,
   estimateReplySeconds,
   estimateSummarySeconds,
   estimateThesesSeconds,
   estimateTranslationSeconds,
 } from "@/lib/translation";
 
-type ArticleAction = "summary" | "theses" | "translation";
+type ArticleAction = "summary" | "theses" | "translation" | "illustration";
 
 const textareaClass =
   "box-border w-full min-w-0 max-w-full min-h-30 resize-y break-words rounded-md border border-slate-300 p-3 text-base text-slate-900 placeholder:text-slate-400 [overflow-wrap:anywhere] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-sm";
@@ -62,6 +63,7 @@ async function copyText(text: string, onCopied: () => void) {
 export default function ReferentForm() {
   const [articleInput, setArticleInput] = useState("");
   const [articleResult, setArticleResult] = useState("");
+  const [articleImage, setArticleImage] = useState("");
   const [articleError, setArticleError] = useState("");
   const [articleCopied, setArticleCopied] = useState(false);
   const [articleLoading, setArticleLoading] = useState(false);
@@ -150,6 +152,7 @@ export default function ReferentForm() {
   function handleClear() {
     setArticleInput("");
     setArticleResult("");
+    setArticleImage("");
     setArticleError("");
     setArticleCopied(false);
     setArticleLoading(false);
@@ -195,6 +198,7 @@ export default function ReferentForm() {
     setArticleCopied(false);
     setArticleLoading(true);
     setArticleResult("");
+    setArticleImage("");
     setTranslationCountdown(null);
     setArticleLoadingText("Загрузка и парсинг статьи...");
 
@@ -237,6 +241,69 @@ export default function ReferentForm() {
   }
 
   async function handleArticleAction(action: ArticleAction) {
+    if (action === "illustration") {
+      const inputType = parseArticleInput(articleInput);
+      if (!inputType) {
+        setArticleError(getErrorMessage(AppErrorCode.ARTICLE_INPUT_REQUIRED));
+        return;
+      }
+
+      const parsePayload =
+        inputType === "url"
+          ? { url: articleInput.trim() }
+          : { text: articleInput.trim() };
+
+      setArticleError("");
+      setArticleCopied(false);
+      setArticleLoading(true);
+      setArticleResult("");
+      setArticleImage("");
+      setTranslationCountdown(null);
+      setArticleLoadingText("Загрузка и парсинг статьи...");
+
+      try {
+        const parsed = await fetchApi<{
+          date: string;
+          title: string;
+          content: string;
+        }>("/api/parse-article", parsePayload);
+
+        if (!parsed.content.trim()) {
+          setArticleError(getErrorMessage(AppErrorCode.ARTICLE_EMPTY_CONTENT));
+          return;
+        }
+
+        const estimatedSeconds = estimateIllustrationSeconds(
+          parsed.content.length,
+        );
+        setTranslationCountdown(estimatedSeconds);
+        setArticleLoadingText(
+          `Текст получен (${parsed.content.length.toLocaleString("ru-RU")} символов). Создание промпта, иллюстрации и перевода...`,
+        );
+
+        const result = await fetchApi<{
+          translation: string;
+          image: string;
+        }>("/api/illustrate-article", {
+          text: parsed.content,
+          title: parsed.title,
+          date: parsed.date,
+        });
+
+        setArticleImage(result.image ?? "");
+        setArticleResult(result.translation ?? "");
+        scrollToSection(articleResultSectionRef);
+      } catch (error) {
+        setArticleError(resolveClientError(error));
+      } finally {
+        setArticleLoading(false);
+        setArticleLoadingText("");
+        setTranslationCountdown(null);
+      }
+
+      return;
+    }
+
     if (action === "translation") {
       await runArticleAction("translation", {
         endpoint: "/api/translate-article",
@@ -392,6 +459,14 @@ export default function ReferentForm() {
           >
             Подробный перевод
           </button>
+          <button
+            type="button"
+            className={actionButtonClass}
+            disabled={articleLoading}
+            onClick={() => void handleArticleAction("illustration")}
+          >
+            Иллюстрация
+          </button>
         </div>
 
         {articleLoading && articleLoadingText && (
@@ -408,11 +483,23 @@ export default function ReferentForm() {
         {articleError && <ErrorAlert className="mb-5" message={articleError} />}
 
         <div ref={articleResultSectionRef} className="relative min-w-0 scroll-mt-6">
+          {articleImage && (
+            <div className="mb-5 min-w-0">
+              <p className="mb-1.5 font-medium text-slate-900">Иллюстрация</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={articleImage}
+                alt="Иллюстрация к статье"
+                className="w-full max-w-full rounded-md border border-slate-300"
+              />
+            </div>
+          )}
+
           <label
             htmlFor="article-result"
             className="mb-1.5 block font-medium text-slate-900"
           >
-            Результат
+            {articleImage ? "Подробный перевод" : "Результат"}
             {articleResult && (
               <span className="mt-1 block text-sm font-normal text-slate-500 md:mt-0 md:inline">
                 — нажмите, чтобы скопировать
@@ -425,7 +512,7 @@ export default function ReferentForm() {
             readOnly
             rows={1}
             className={`${textareaClass} resize-none overflow-hidden ${copyableClass(articleCopied)}`}
-            placeholder="Здесь появится результат анализа или перевод статьи..."
+            placeholder="Здесь появится результат анализа, перевод или иллюстрация к статье..."
             value={articleResult}
             onClick={() =>
               void copyText(articleResult, () => flashCopied(setArticleCopied))

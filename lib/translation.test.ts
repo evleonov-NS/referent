@@ -5,6 +5,7 @@ import {
   estimateSummarySeconds,
   estimateThesesSeconds,
   estimateTranslationSeconds,
+  isInvalidImagePrompt,
   isInvalidSummary,
   isInvalidTheses,
   isInvalidTranslation,
@@ -83,6 +84,21 @@ Hoverify 4.8.1 добавляет экспорт PDF.
 2. Используется targeted RL с текстовой обратной связью`;
 
     expect(isInvalidTheses(theses, 1000)).toBe(false);
+  });
+});
+
+describe("isInvalidImagePrompt", () => {
+  it("rejects empty and markdown prompts", () => {
+    expect(isInvalidImagePrompt("")).toBe(true);
+    expect(isInvalidImagePrompt("## Title")).toBe(true);
+  });
+
+  it("accepts concise English prompt", () => {
+    expect(
+      isInvalidImagePrompt(
+        "A futuristic AI workspace with glowing neural networks and code on screens, digital art, cinematic lighting",
+      ),
+    ).toBe(false);
   });
 });
 

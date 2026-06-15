@@ -7,6 +7,8 @@ export const AppErrorCode = {
   AI_UNAVAILABLE: "AI_UNAVAILABLE",
   AI_CREDITS_EXHAUSTED: "AI_CREDITS_EXHAUSTED",
   AI_CONFIG_MISSING: "AI_CONFIG_MISSING",
+  IMAGE_CONFIG_MISSING: "IMAGE_CONFIG_MISSING",
+  IMAGE_GENERATION_FAILED: "IMAGE_GENERATION_FAILED",
   NETWORK_ERROR: "NETWORK_ERROR",
   REQUEST_ABORTED: "REQUEST_ABORTED",
   INVALID_RESPONSE: "INVALID_RESPONSE",
@@ -31,6 +33,10 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
     "Недостаточно кредитов на OpenRouter. Пополните баланс или выберите другую модель.",
   [AppErrorCode.AI_CONFIG_MISSING]:
     "API-ключ не настроен. Добавьте OPENROUTER_API_KEY в .env.local.",
+  [AppErrorCode.IMAGE_CONFIG_MISSING]:
+    "API-ключ Hugging Face не настроен. Добавьте HUGGINGFACE_API_KEY в .env.local.",
+  [AppErrorCode.IMAGE_GENERATION_FAILED]:
+    "Не удалось сгенерировать иллюстрацию. Попробуйте ещё раз позже.",
   [AppErrorCode.NETWORK_ERROR]:
     "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   [AppErrorCode.REQUEST_ABORTED]: "Операция прервана.",
@@ -48,6 +54,8 @@ const DEFAULT_HTTP_STATUS: Record<AppErrorCode, number> = {
   [AppErrorCode.AI_UNAVAILABLE]: 503,
   [AppErrorCode.AI_CREDITS_EXHAUSTED]: 402,
   [AppErrorCode.AI_CONFIG_MISSING]: 500,
+  [AppErrorCode.IMAGE_CONFIG_MISSING]: 500,
+  [AppErrorCode.IMAGE_GENERATION_FAILED]: 502,
   [AppErrorCode.NETWORK_ERROR]: 503,
   [AppErrorCode.REQUEST_ABORTED]: 499,
   [AppErrorCode.INVALID_RESPONSE]: 502,

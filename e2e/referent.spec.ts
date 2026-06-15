@@ -26,6 +26,7 @@ test.describe("Референт", () => {
     await expect(page.getByRole("button", { name: "О чем статья?" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Тезисы" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Подробный перевод" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Иллюстрация" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Перевести письмо" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Подготовить ответ" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Очистить" })).toBeVisible();

@@ -14,6 +14,10 @@ export function estimateReplySeconds(charCount: number): number {
   return Math.min(120, Math.max(20, Math.ceil(charCount / 300)));
 }
 
+export function estimateIllustrationSeconds(charCount: number): number {
+  return Math.min(180, estimateTranslationSeconds(charCount) + 45);
+}
+
 function isGarbageAiText(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
@@ -51,6 +55,17 @@ export function isInvalidTheses(theses: string, sourceLength: number): boolean {
 
   if (listItems.length < 2 && sourceLength > 200) return true;
   if (theses.trim().length < 30 && sourceLength > 400) return true;
+
+  return false;
+}
+
+export function isInvalidImagePrompt(prompt: string): boolean {
+  if (isGarbageAiText(prompt)) return true;
+
+  const trimmed = prompt.trim();
+  if (trimmed.length < 15) return true;
+  if (trimmed.length > 800) return true;
+  if (/^#{1,6}\s|```|\[.*\]\(.*\)/.test(trimmed)) return true;
 
   return false;
 }
