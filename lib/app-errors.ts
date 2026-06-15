@@ -36,7 +36,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   [AppErrorCode.IMAGE_CONFIG_MISSING]:
     "API-ключ Hugging Face не настроен. Добавьте HUGGINGFACE_API_KEY в .env.local.",
   [AppErrorCode.IMAGE_GENERATION_FAILED]:
-    "Не удалось сгенерировать иллюстрацию. Попробуйте ещё раз позже.",
+    "Не удалось сгенерировать иллюстрацию. Проверьте ключ Hugging Face, кредиты на huggingface.co/settings/billing и модель в HUGGINGFACE_MODEL.",
   [AppErrorCode.NETWORK_ERROR]:
     "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   [AppErrorCode.REQUEST_ABORTED]: "Операция прервана.",

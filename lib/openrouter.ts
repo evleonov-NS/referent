@@ -1,4 +1,5 @@
 import { AppError, AppErrorCode } from "@/lib/app-errors";
+import { httpsPost } from "@/lib/http-ipv4";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -48,6 +49,22 @@ function toOpenRouterAppError(status: number, retriable = false): AppError {
   return new AppError(AppErrorCode.AI_UNAVAILABLE, { retriable });
 }
 
+function mapTransportError(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+
+  if (error instanceof Error) {
+    if (/CONNECT_TIMEOUT|ETIMEDOUT|timeout/i.test(error.message)) {
+      return new AppError(AppErrorCode.AI_UNAVAILABLE, { retriable: true });
+    }
+
+    if (/ENOTFOUND|ECONNREFUSED|fetch failed/i.test(error.message)) {
+      return new AppError(AppErrorCode.NETWORK_ERROR);
+    }
+  }
+
+  return new AppError(AppErrorCode.AI_UNAVAILABLE);
+}
+
 function extractMessageContent(message: {
   content?: string;
   reasoning?: string;
@@ -75,31 +92,37 @@ async function requestWithModel(
   messages: ChatMessage[],
   apiKey: string,
 ): Promise<string> {
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer":
-        process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-      "X-Title": "Referent",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-    }),
-  });
+  let response: Awaited<ReturnType<typeof httpsPost>>;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    const message = parseErrorMessage(errorText);
+  try {
+    response = await httpsPost(
+      OPENROUTER_API_URL,
+      {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer":
+          process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+        "X-Title": "Referent",
+      },
+      JSON.stringify({ model, messages }),
+    );
+  } catch (error) {
+    throw mapTransportError(error);
+  }
+
+  const responseText = response.body.toString("utf8");
+
+  if (response.status < 200 || response.status >= 300) {
+    const message = parseErrorMessage(responseText);
     throw toOpenRouterAppError(
       response.status,
       isRetriableModelError(response.status, message),
     );
   }
 
-  const data = await response.json();
+  const data = JSON.parse(responseText) as {
+    choices?: Array<{ message?: { content?: string; reasoning?: string } }>;
+  };
   const content = extractMessageContent(data.choices?.[0]?.message ?? {});
 
   if (!content) {
@@ -128,17 +151,16 @@ export async function chatCompletion(messages: ChatMessage[]): Promise<string> {
       try {
         return await requestWithModel(model, messages, apiKey);
       } catch (error) {
-        if (!(error instanceof AppError)) {
-          throw error;
-        }
+        const appError =
+          error instanceof AppError ? error : mapTransportError(error);
 
-        lastError = error;
+        lastError = appError;
 
         const isLastAttempt = attempt === MAX_ATTEMPTS_PER_MODEL;
         const isLastModel = model === models[models.length - 1];
 
-        if (!error.retriable || (isLastAttempt && isLastModel)) {
-          throw error;
+        if (!appError.retriable || (isLastAttempt && isLastModel)) {
+          throw appError;
         }
 
         if (isLastAttempt) {

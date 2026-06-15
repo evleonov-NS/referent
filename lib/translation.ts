@@ -15,7 +15,7 @@ export function estimateReplySeconds(charCount: number): number {
 }
 
 export function estimateIllustrationSeconds(charCount: number): number {
-  return Math.min(180, estimateTranslationSeconds(charCount) + 45);
+  return Math.min(240, estimateTranslationSeconds(charCount) + 90);
 }
 
 function isGarbageAiText(text: string): boolean {

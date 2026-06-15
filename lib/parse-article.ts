@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 import { parseHTML } from "linkedom";
 
 import { AppError, AppErrorCode } from "@/lib/app-errors";
+import { httpsGet } from "@/lib/http-ipv4";
 
 export type ParsedArticle = {
   date: string;
@@ -234,19 +235,20 @@ export async function fetchAndParseArticle(rawUrl: string): Promise<ParsedArticl
   const url = normalizeUrl(rawUrl);
 
   try {
-    const response = await fetch(url, {
-      headers: {
+    const response = await httpsGet(
+      url,
+      {
         "User-Agent": "Mozilla/5.0 (compatible; ReferentBot/1.0)",
         Accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(15000),
-    });
+      15_000,
+    );
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new AppError(AppErrorCode.ARTICLE_FETCH_FAILED);
     }
 
-    const html = await response.text();
+    const html = response.body.toString("utf8");
     const $ = cheerio.load(html);
 
     return {
